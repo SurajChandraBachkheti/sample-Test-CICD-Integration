@@ -14,21 +14,26 @@ jobs:
         uses: actions/checkout@v3
 
       - name: Restore Dependencies
+        shell: powershell
         run: dotnet restore
 
       - name: Build Project
+        shell: powershell
         run: dotnet build --configuration Release
 
       - name: Publish Application
-        run: dotnet publish -c Release -o C:\deploy\app
+        # ✅ Output to D:\deploy\app since runner works on D drive
+        shell: powershell
+        run: dotnet publish -c Release -o D:\deploy\app
 
       - name: Backup Existing App
         shell: powershell
         run: |
           $source = "C:\inetpub\wwwroot\YourApp"
           $date   = Get-Date -Format "yyyyMMdd_HHmmss"
-          $dest   = "C:\backup\YourApp_$date"
+          $dest   = "D:\backup\YourApp_$date"
           if (Test-Path $source) {
+            New-Item -ItemType Directory -Path "D:\backup" -Force | Out-Null
             Copy-Item -Path $source -Destination $dest -Recurse -Force
             Write-Host "Backup created at $dest"
           } else {
@@ -51,9 +56,10 @@ jobs:
           Write-Host "Created fresh folder: $target"
 
       - name: Deploy Files to IIS
+        # ✅ Source is D:\deploy\app, target is C:\inetpub\wwwroot\YourApp
         shell: powershell
         run: |
-          $source = "C:\deploy\app\*"
+          $source = "D:\deploy\app\*"
           $target = "C:\inetpub\wwwroot\YourApp"
           Copy-Item -Path $source -Destination $target -Recurse -Force
           Write-Host "Files deployed successfully."
