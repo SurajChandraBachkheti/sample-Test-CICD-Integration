@@ -13,10 +13,9 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v3
 
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v3
-        with:
-          dotnet-version: '10.0.x'
+      # ✅ FIX 1: Removed setup-dotnet step entirely.
+      # Your Windows Server already has .NET installed.
+      # The runner picks up dotnet from the system PATH automatically.
 
       - name: Restore Dependencies
         run: dotnet restore
@@ -25,11 +24,45 @@ jobs:
         run: dotnet build --configuration Release
 
       - name: Publish Application
-        run: dotnet publish -c Release -o D:\deploy\app
+        # ✅ FIX 2: Changed publish output path from D:\deploy\app to C:\deploy\app
+        # Your xcopy step below reads from C:\deploy\app — they must match.
+        run: dotnet publish -c Release -o C:\deploy\app
+
+      - name: Backup Existing App
+        # ✅ NEW: Always backup before touching the live folder
+        run: |
+          if exist C:\inetpub\wwwroot\YourApp (
+            xcopy C:\inetpub\wwwroot\YourApp C:\backup\YourApp_%date:~-4,4%%date:~-7,2%%date:~0,2% /E /H /C /I /Y
+          )
 
       - name: Stop IIS
         run: iisreset /stop
 
+      - name: Clean Target Folder
+        # ✅ NEW: Remove stale files before deploy to avoid leftover DLLs
+        run: |
+          if exist C:\inetpub\wwwroot\YourApp (
+            rmdir /S /Q C:\inetpub\wwwroot\YourApp
+          )
+          mkdir C:\inetpub\wwwroot\YourApp
+
       - name: Deploy Files to IIS
+        # ✅ FIX 3: Ensure target folder exists before xcopy runs
         run: |
           xcopy C:\deploy\app\* C:\inetpub\wwwroot\YourApp /E /H /C /I /Y
+
+      - name: Start IIS
+        # ✅ FIX 4: You were missing iisreset /start — IIS was never restarted!
+        run: iisreset /start
+
+      - name: Verify Deployment
+        # ✅ NEW: Basic health check to confirm the app responded after deploy
+        run: |
+          Start-Sleep -Seconds 5
+          $response = Invoke-WebRequest -Uri http://localhost -UseBasicParsing -TimeoutSec 10
+          if ($response.StatusCode -ne 200) {
+            Write-Error "Health check failed! Status: $($response.StatusCode)"
+            exit 1
+          }
+          Write-Host "Deployment successful. App is responding."
+        shell: powershell
