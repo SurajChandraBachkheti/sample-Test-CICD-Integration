@@ -29,9 +29,9 @@ jobs:
       - name: Backup Existing App
         shell: powershell
         run: |
-          $source = "C:\inetpub\wwwroot\YourApp"
+          $source = "C:\inetpub\wwwroot\sampleApplication"
           $date   = Get-Date -Format "yyyyMMdd_HHmmss"
-          $dest   = "D:\backup\YourApp_$date"
+          $dest   = "D:\backup\sampleApplication_$date"
           if (Test-Path $source) {
             New-Item -ItemType Directory -Path "D:\backup" -Force | Out-Null
             Copy-Item -Path $source -Destination $dest -Recurse -Force
@@ -43,7 +43,7 @@ jobs:
       - name: Clean Target Folder
         shell: powershell
         run: |
-          $target = "C:\inetpub\wwwroot\YourApp"
+          $target = "C:\inetpub\wwwroot\sampleApplication"
           if (Test-Path $target) {
             Remove-Item -Path $target -Recurse -Force
             Write-Host "Cleaned: $target"
@@ -56,7 +56,7 @@ jobs:
         shell: powershell
         run: |
           $source = "D:\deploy\app\*"
-          $target = "C:\inetpub\wwwroot\YourApp"
+          $target = "C:\inetpub\wwwroot\sampleApplication"
           Copy-Item -Path $source -Destination $target -Recurse -Force
           Write-Host "Files deployed successfully."
 
