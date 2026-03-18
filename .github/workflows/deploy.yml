@@ -47,7 +47,8 @@ jobs:
         shell: powershell
         run: |
           Import-Module WebAdministration
-          Stop-WebAppPool -Name "sampleApplication"
+          $site = Get-Website -Name "sampleApplication"
+          Stop-WebAppPool -Name $site.applicationPool
 
       # ✅ Ensure target folder exists
       - name: Ensure Target Folder Exists
@@ -71,7 +72,8 @@ jobs:
         shell: powershell
         run: |
           Import-Module WebAdministration
-          Start-WebAppPool -Name "YourApp"
+          $site = Get-Website -Name "sampleApplication"
+          Start-WebAppPool -Name $site.applicationPool
 
       # ✅ Health Check
       - name: Verify Deployment
