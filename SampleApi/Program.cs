@@ -23,7 +23,7 @@ builder.Services.AddSwaggerGen(options =>
 
 var app = builder.Build();
 
-// Configure middleware pipeline data
+// Configure middleware pipeline
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
