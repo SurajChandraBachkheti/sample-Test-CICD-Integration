@@ -13,10 +13,6 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v3
 
-      # ✅ FIX 1: Removed setup-dotnet step entirely.
-      # Your Windows Server already has .NET installed.
-      # The runner picks up dotnet from the system PATH automatically.
-
       - name: Restore Dependencies
         run: dotnet restore
 
@@ -24,45 +20,61 @@ jobs:
         run: dotnet build --configuration Release
 
       - name: Publish Application
-        # ✅ FIX 2: Changed publish output path from D:\deploy\app to C:\deploy\app
-        # Your xcopy step below reads from C:\deploy\app — they must match.
         run: dotnet publish -c Release -o C:\deploy\app
 
       - name: Backup Existing App
-        # ✅ NEW: Always backup before touching the live folder
+        shell: powershell
         run: |
-          if exist C:\inetpub\wwwroot\YourApp (
-            xcopy C:\inetpub\wwwroot\YourApp C:\backup\YourApp_%date:~-4,4%%date:~-7,2%%date:~0,2% /E /H /C /I /Y
-          )
+          $source = "C:\inetpub\wwwroot\YourApp"
+          $date   = Get-Date -Format "yyyyMMdd_HHmmss"
+          $dest   = "C:\backup\YourApp_$date"
+          if (Test-Path $source) {
+            Copy-Item -Path $source -Destination $dest -Recurse -Force
+            Write-Host "Backup created at $dest"
+          } else {
+            Write-Host "No existing app folder found, skipping backup."
+          }
 
       - name: Stop IIS
+        shell: powershell
         run: iisreset /stop
 
       - name: Clean Target Folder
-        # ✅ NEW: Remove stale files before deploy to avoid leftover DLLs
+        shell: powershell
         run: |
-          if exist C:\inetpub\wwwroot\YourApp (
-            rmdir /S /Q C:\inetpub\wwwroot\YourApp
-          )
-          mkdir C:\inetpub\wwwroot\YourApp
+          $target = "C:\inetpub\wwwroot\YourApp"
+          if (Test-Path $target) {
+            Remove-Item -Path $target -Recurse -Force
+            Write-Host "Cleaned: $target"
+          }
+          New-Item -ItemType Directory -Path $target -Force | Out-Null
+          Write-Host "Created fresh folder: $target"
 
       - name: Deploy Files to IIS
-        # ✅ FIX 3: Ensure target folder exists before xcopy runs
+        shell: powershell
         run: |
-          xcopy C:\deploy\app\* C:\inetpub\wwwroot\YourApp /E /H /C /I /Y
+          $source = "C:\deploy\app\*"
+          $target = "C:\inetpub\wwwroot\YourApp"
+          Copy-Item -Path $source -Destination $target -Recurse -Force
+          Write-Host "Files deployed successfully."
 
       - name: Start IIS
-        # ✅ FIX 4: You were missing iisreset /start — IIS was never restarted!
+        shell: powershell
         run: iisreset /start
 
       - name: Verify Deployment
-        # ✅ NEW: Basic health check to confirm the app responded after deploy
+        shell: powershell
         run: |
           Start-Sleep -Seconds 5
-          $response = Invoke-WebRequest -Uri http://localhost -UseBasicParsing -TimeoutSec 10
-          if ($response.StatusCode -ne 200) {
-            Write-Error "Health check failed! Status: $($response.StatusCode)"
+          try {
+            $response = Invoke-WebRequest -Uri http://localhost -UseBasicParsing -TimeoutSec 10
+            if ($response.StatusCode -eq 200) {
+              Write-Host "Health check passed. App is running."
+            } else {
+              Write-Error "Health check failed. Status: $($response.StatusCode)"
+              exit 1
+            }
+          } catch {
+            Write-Error "Health check failed. Could not reach the app: $_"
             exit 1
           }
-          Write-Host "Deployment successful. App is responding."
-        shell: powershell
