@@ -1,0 +1,35 @@
+name: Deploy to Windows Server
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-and-deploy:
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v3
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore Dependencies
+        run: dotnet restore
+
+      - name: Build Project
+        run: dotnet build --configuration Release
+
+      - name: Publish Application
+        run: dotnet publish -c Release -o D:\deploy\app
+
+      - name: Stop IIS
+        run: iisreset /stop
+
+      - name: Deploy Files to IIS
+        run: |
+          xcopy C:\deploy\app\* C:\inetpub\wwwroot\YourApp /E /H /C /I /Y
