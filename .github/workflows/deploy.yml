@@ -10,56 +10,70 @@ jobs:
     runs-on: self-hosted
 
     steps:
+      # ✅ Checkout code
       - name: Checkout Code
         uses: actions/checkout@v3
 
+      # ✅ Restore
       - name: Restore Dependencies
-        shell: powershell
         run: dotnet restore
 
+      # ✅ Build
       - name: Build Project
-        shell: powershell
         run: dotnet build --configuration Release
 
+      # ✅ Publish (IMPORTANT: use .csproj)
       - name: Publish Application
-        # ✅ Output to D:\deploy\app since runner works on D drive
-        shell: powershell
-        run: dotnet publish -c Release -o D:\deploy\app
+        run: dotnet publish SampleApi/SampleApi.csproj -c Release -o D:\deploy\app
 
+      # ✅ Backup existing app (safe)
       - name: Backup Existing App
         shell: powershell
         run: |
           $source = "C:\inetpub\wwwroot\sampleApplication"
           $date   = Get-Date -Format "yyyyMMdd_HHmmss"
           $dest   = "D:\backup\sampleApplication_$date"
+
           if (Test-Path $source) {
             New-Item -ItemType Directory -Path "D:\backup" -Force | Out-Null
             Copy-Item -Path $source -Destination $dest -Recurse -Force
             Write-Host "Backup created at $dest"
           } else {
-            Write-Host "No existing app folder found, skipping backup."
+            Write-Host "No existing app found, skipping backup."
           }
 
-      - name: Clean Target Folder
+      # ✅ Stop IIS App Pool (avoids file lock)
+      - name: Stop App Pool
+        shell: powershell
+        run: |
+          Import-Module WebAdministration
+          Stop-WebAppPool -Name "sampleApplication"
+
+      # ✅ Ensure target folder exists
+      - name: Ensure Target Folder Exists
         shell: powershell
         run: |
           $target = "C:\inetpub\wwwroot\sampleApplication"
-          if (Test-Path $target) {
-            Remove-Item -Path $target -Recurse -Force
-            Write-Host "Cleaned: $target"
+          if (!(Test-Path $target)) {
+            New-Item -ItemType Directory -Path $target -Force | Out-Null
           }
-          New-Item -ItemType Directory -Path $target -Force | Out-Null
-          Write-Host "Created fresh folder: $target"
 
-      - name: Deploy Files to IIS
-        # ✅ Source is D:\deploy\app, target is C:\inetpub\wwwroot\YourApp
+      # ✅ Deploy files (overwrite instead of delete)
+      - name: Deploy Files
         shell: powershell
         run: |
-          $source = "D:\deploy\app\*"
-          $target = "C:\inetpub\wwwroot\sampleApplication"
-          Copy-Item -Path $source -Destination $target -Recurse -Force
-          Write-Host "Files deployed successfully."
+          Copy-Item -Path "D:\deploy\app\*" `
+                    -Destination "C:\inetpub\wwwroot\sampleApplication" `
+                    -Recurse -Force
 
+      # ✅ Start IIS App Pool
+      - name: Start App Pool
+        shell: powershell
+        run: |
+          Import-Module WebAdministration
+          Start-WebAppPool -Name "YourApp"
+
+      # ✅ Health Check
       - name: Verify Deployment
         shell: powershell
         run: |
@@ -67,12 +81,12 @@ jobs:
           try {
             $response = Invoke-WebRequest -Uri http://localhost -UseBasicParsing -TimeoutSec 10
             if ($response.StatusCode -eq 200) {
-              Write-Host "Health check passed. App is running."
+              Write-Host "✅ App is running successfully"
             } else {
-              Write-Error "Health check failed. Status: $($response.StatusCode)"
+              Write-Error "❌ Health check failed. Status: $($response.StatusCode)"
               exit 1
             }
           } catch {
-            Write-Error "Health check failed. Could not reach the app: $_"
+            Write-Error "❌ App not reachable: $_"
             exit 1
           }
