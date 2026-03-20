@@ -24,15 +24,13 @@ builder.Services.AddSwaggerGen(options =>
 var app = builder.Build();
 
 // Configure middleware pipeline data
-if (app.Environment.IsDevelopment())
+
+app.UseSwagger();
+app.UseSwaggerUI(options =>
 {
-    app.UseSwagger();
-    app.UseSwaggerUI(options =>
-    {
-        options.SwaggerEndpoint("/swagger/v1/swagger.json", "Sample API v1");
-        options.RoutePrefix = string.Empty; // Swagger at root
-    });
-}
+    options.SwaggerEndpoint("/swagger/v1/swagger.json", "Sample API v1");
+    options.RoutePrefix = string.Empty; // Swagger at root
+});
 
 app.UseHttpsRedirection();
 app.UseAuthorization();
