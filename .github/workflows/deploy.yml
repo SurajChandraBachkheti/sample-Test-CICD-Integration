@@ -38,14 +38,17 @@ jobs:
           }
 
           $content = Get-Content $file -Raw
+
           $content = $content.Replace("__DB_CONNECTION_STRING__", "${{ secrets.DB_CONNECTION_STRING }}")
           $content = $content.Replace("__API_KEY__", "${{ secrets.API_KEY }}")
           $content = $content.Replace("__JWT_SECRET__", "${{ secrets.JWT_SECRET }}")
 
           Set-Content $file $content
 
-      # 🔥 UPDATED BACKUP STEP (WITH CLEANUP)
-      - name: Backup Existing App (with cleanup)
+          Write-Host "Secrets replaced successfully."
+
+      # 🔥 Backup + Keep Last 3 Only
+      - name: Backup Existing App (Keep Last 3)
         shell: powershell
         run: |
           $source = "C:\inetpub\wwwroot\sampleApplication"
@@ -53,7 +56,7 @@ jobs:
           $date = Get-Date -Format "yyyyMMdd_HHmmss"
           $dest = "$backupRoot\sampleApplication_$date"
 
-          # Ensure backup folder exists
+          # Ensure backup root exists
           if (!(Test-Path $backupRoot)) {
             New-Item -ItemType Directory -Path $backupRoot -Force | Out-Null
           }
@@ -66,18 +69,23 @@ jobs:
             Write-Host "No existing app found, skipping backup."
           }
 
-          # 🔥 Delete backups older than 3 days
-          Write-Host "Cleaning backups older than 3 days..."
+          # 🔥 Keep only latest 3 backups (based on folder name)
+          Write-Host "Cleaning old backups, keeping only latest 3..."
 
-          Get-ChildItem -Path $backupRoot -Directory |
-            Where-Object {
-              $_.Name -like "sampleApplication_*" -and
-              $_.LastWriteTime -lt (Get-Date).AddDays(-3)
-            } |
-            ForEach-Object {
-              Write-Host "Deleting old backup: $($_.FullName)"
-              Remove-Item $_.FullName -Recurse -Force
+          $backups = Get-ChildItem -Path $backupRoot -Directory |
+            Where-Object { $_.Name -like "sampleApplication_*" } |
+            Sort-Object Name -Descending
+
+          if ($backups.Count -le 3) {
+            Write-Host "3 or fewer backups found. No cleanup needed."
+          } else {
+            $backupsToDelete = $backups | Select-Object -Skip 3
+
+            foreach ($backup in $backupsToDelete) {
+              Write-Host "Deleting old backup: $($backup.FullName)"
+              Remove-Item $backup.FullName -Recurse -Force
             }
+          }
 
       # ✅ Stop App Pool
       - name: Stop App Pool
@@ -85,6 +93,11 @@ jobs:
         run: |
           Import-Module WebAdministration
           $appPool = "sampleApplication"
+
+          if (!(Test-Path "IIS:\AppPools\$appPool")) {
+            Write-Error "App Pool does not exist!"
+            exit 1
+          }
 
           $state = (Get-WebAppPoolState $appPool).Value
 
@@ -96,6 +109,8 @@ jobs:
               Start-Sleep -Seconds 1
               $timeout--
             }
+          } else {
+            Write-Host "App Pool already stopped."
           }
 
       # ✅ Ensure folder
@@ -127,6 +142,11 @@ jobs:
           Import-Module WebAdministration
           $appPool = "sampleApplication"
 
+          if (!(Test-Path "IIS:\AppPools\$appPool")) {
+            Write-Error "App Pool does not exist!"
+            exit 1
+          }
+
           $state = (Get-WebAppPoolState $appPool).Value
 
           if ($state -ne "Started") {
@@ -137,6 +157,8 @@ jobs:
               Start-Sleep -Seconds 1
               $timeout--
             }
+          } else {
+            Write-Host "App Pool already running."
           }
 
       # ✅ Health Check
@@ -147,6 +169,7 @@ jobs:
 
           try {
             $response = Invoke-WebRequest -Uri http://localhost -UseBasicParsing -TimeoutSec 10
+
             if ($response.StatusCode -eq 200) {
               Write-Host "✅ App is running successfully"
             } else {
