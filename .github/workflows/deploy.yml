@@ -26,6 +26,29 @@ jobs:
       - name: Publish Application
         run: dotnet publish SampleApi/SampleApi.csproj -c Release -o D:\deploy\app
 
+      # 🔥 NEW STEP — Replace Secrets
+      - name: Replace AppSettings Secrets
+        shell: powershell
+        run: |
+          $file = "D:\deploy\app\appsettings.json"
+
+          if (!(Test-Path $file)) {
+            Write-Error "appsettings.json not found!"
+            exit 1
+          }
+
+          Write-Host "Replacing secrets in appsettings.json..."
+
+          $content = Get-Content $file -Raw
+
+          $content = $content.Replace("__DB_CONNECTION_STRING__", "${{ secrets.DB_CONNECTION_STRING }}")
+          $content = $content.Replace("__API_KEY__", "${{ secrets.API_KEY }}")
+          $content = $content.Replace("__JWT_SECRET__", "${{ secrets.JWT_SECRET }}")
+
+          Set-Content $file $content
+
+          Write-Host "Secrets replaced successfully."
+
       # ✅ Backup existing app
       - name: Backup Existing App
         shell: powershell

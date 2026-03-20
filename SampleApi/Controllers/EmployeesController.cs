@@ -8,6 +8,7 @@ namespace SampleApi.Controllers;
 [Produces("application/json")]
 public class EmployeesController : ControllerBase
 {
+    private readonly IConfiguration _config;
     private static readonly List<Employee> _employees = new()
     {
         new Employee { Id = 1, FirstName = "Alice",   LastName = "Johnson",  Department = "Engineering",    JobTitle = "Senior Developer",    Email = "alice.johnson@company.com",  JoinedDate = new DateTime(2019, 3, 10), Salary = 95000m  },
@@ -19,6 +20,19 @@ public class EmployeesController : ControllerBase
         new Employee { Id = 7, FirstName = "Grace",   LastName = "Taylor",   Department = "Marketing",      JobTitle = "Content Manager",      Email = "grace.taylor@company.com",   JoinedDate = new DateTime(2022, 2, 28), Salary = 67000m  },
         new Employee { Id = 8, FirstName = "Henry",   LastName = "Davis",    Department = "Finance",        JobTitle = "CFO",                  Email = "henry.davis@company.com",    JoinedDate = new DateTime(2015, 8, 3),  Salary = 150000m },
     };
+    public EmployeesController(IConfiguration config)
+    {
+        _config = config;
+    }
+
+    [HttpGet("get-key")]
+    public IActionResult GetKey()
+    {
+        var apiKey = _config["ApiSettings:ApiKey"];
+        var jwtSecerets = _config["ApiSettings:JwtSecret"];
+        var connectionString = _config["ConnectionStrings:DefaultConnection"];
+        return Ok(new { ApiKey = apiKey, JwtSecerets = jwtSecerets, ConnectionString = connectionString });
+    }
 
     /// <summary>Get all employees</summary>
     [HttpGet]
