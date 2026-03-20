@@ -10,7 +10,7 @@ jobs:
     runs-on: self-hosted
 
     steps:
-      # ✅ Checkout code
+      # ✅ Checkout
       - name: Checkout Code
         uses: actions/checkout@v3
 
@@ -22,11 +22,11 @@ jobs:
       - name: Build Project
         run: dotnet build --configuration Release
 
-      # ✅ Publish (IMPORTANT: use .csproj)
+      # ✅ Publish
       - name: Publish Application
         run: dotnet publish SampleApi/SampleApi.csproj -c Release -o D:\deploy\app
 
-      # ✅ Backup existing app (safe)
+      # ✅ Backup existing app
       - name: Backup Existing App
         shell: powershell
         run: |
@@ -42,13 +42,35 @@ jobs:
             Write-Host "No existing app found, skipping backup."
           }
 
-      # ✅ Stop IIS App Pool (avoids file lock)
+      # ✅ Stop App Pool (SAFE + WAIT)
       - name: Stop App Pool
         shell: powershell
         run: |
           Import-Module WebAdministration
-          $site = Get-Website -Name "sampleApplication"
-          Stop-WebAppPool -Name $site.applicationPool
+
+          $appPool = "sampleApplication"
+
+          if (!(Test-Path "IIS:\AppPools\$appPool")) {
+            Write-Error "App Pool does not exist!"
+            exit 1
+          }
+
+          Write-Host "Stopping App Pool: $appPool"
+          Stop-WebAppPool -Name $appPool
+
+          # Wait until stopped
+          $timeout = 30
+          while ((Get-WebAppPoolState $appPool).Value -ne "Stopped" -and $timeout -gt 0) {
+            Start-Sleep -Seconds 1
+            $timeout--
+          }
+
+          if ($timeout -eq 0) {
+            Write-Error "App Pool did not stop in time"
+            exit 1
+          }
+
+          Write-Host "App Pool stopped successfully"
 
       # ✅ Ensure target folder exists
       - name: Ensure Target Folder Exists
@@ -59,7 +81,7 @@ jobs:
             New-Item -ItemType Directory -Path $target -Force | Out-Null
           }
 
-      # ✅ Deploy files (overwrite instead of delete)
+      # ✅ Deploy files
       - name: Deploy Files
         shell: powershell
         run: |
@@ -67,21 +89,50 @@ jobs:
                     -Destination "C:\inetpub\wwwroot\sampleApplication" `
                     -Recurse -Force
 
-      # ✅ Start IIS App Pool
+      # ✅ Small wait (IMPORTANT)
+      - name: Wait Before Starting App Pool
+        shell: powershell
+        run: Start-Sleep -Seconds 3
+
+      # ✅ Start App Pool (SAFE + WAIT)
       - name: Start App Pool
         shell: powershell
         run: |
           Import-Module WebAdministration
-          $site = Get-Website -Name "sampleApplication"
-          Start-WebAppPool -Name $site.applicationPool
+
+          $appPool = "sampleApplication"
+
+          if (!(Test-Path "IIS:\AppPools\$appPool")) {
+            Write-Error "App Pool does not exist!"
+            exit 1
+          }
+
+          Write-Host "Starting App Pool: $appPool"
+          Start-WebAppPool -Name $appPool
+
+          # Wait until started
+          $timeout = 30
+          while ((Get-WebAppPoolState $appPool).Value -ne "Started" -and $timeout -gt 0) {
+            Start-Sleep -Seconds 1
+            $timeout--
+          }
+
+          if ($timeout -eq 0) {
+            Write-Error "App Pool did not start in time"
+            exit 1
+          }
+
+          Write-Host "App Pool started successfully"
 
       # ✅ Health Check
       - name: Verify Deployment
         shell: powershell
         run: |
           Start-Sleep -Seconds 5
+
           try {
             $response = Invoke-WebRequest -Uri http://localhost -UseBasicParsing -TimeoutSec 10
+
             if ($response.StatusCode -eq 200) {
               Write-Host "✅ App is running successfully"
             } else {
