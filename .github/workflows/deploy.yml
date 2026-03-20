@@ -42,7 +42,7 @@ jobs:
             Write-Host "No existing app found, skipping backup."
           }
 
-      # ✅ Stop App Pool (SAFE + WAIT)
+      # ✅ Stop App Pool (SAFE)
       - name: Stop App Pool
         shell: powershell
         run: |
@@ -55,22 +55,26 @@ jobs:
             exit 1
           }
 
-          Write-Host "Stopping App Pool: $appPool"
-          Stop-WebAppPool -Name $appPool
+          $state = (Get-WebAppPoolState $appPool).Value
+          Write-Host "Current App Pool State: $state"
 
-          # Wait until stopped
-          $timeout = 30
-          while ((Get-WebAppPoolState $appPool).Value -ne "Stopped" -and $timeout -gt 0) {
-            Start-Sleep -Seconds 1
-            $timeout--
+          if ($state -eq "Stopped") {
+            Write-Host "App Pool already stopped. Skipping."
+          } else {
+            Write-Host "Stopping App Pool..."
+            Stop-WebAppPool -Name $appPool
+
+            $timeout = 30
+            while ((Get-WebAppPoolState $appPool).Value -ne "Stopped" -and $timeout -gt 0) {
+              Start-Sleep -Seconds 1
+              $timeout--
+            }
+
+            if ($timeout -eq 0) {
+              Write-Error "App Pool did not stop in time"
+              exit 1
+            }
           }
-
-          if ($timeout -eq 0) {
-            Write-Error "App Pool did not stop in time"
-            exit 1
-          }
-
-          Write-Host "App Pool stopped successfully"
 
       # ✅ Ensure target folder exists
       - name: Ensure Target Folder Exists
@@ -94,7 +98,7 @@ jobs:
         shell: powershell
         run: Start-Sleep -Seconds 3
 
-      # ✅ Start App Pool (SAFE + WAIT)
+      # ✅ Start App Pool (SAFE)
       - name: Start App Pool
         shell: powershell
         run: |
@@ -107,22 +111,26 @@ jobs:
             exit 1
           }
 
-          Write-Host "Starting App Pool: $appPool"
-          Start-WebAppPool -Name $appPool
+          $state = (Get-WebAppPoolState $appPool).Value
+          Write-Host "Current App Pool State: $state"
 
-          # Wait until started
-          $timeout = 30
-          while ((Get-WebAppPoolState $appPool).Value -ne "Started" -and $timeout -gt 0) {
-            Start-Sleep -Seconds 1
-            $timeout--
+          if ($state -eq "Started") {
+            Write-Host "App Pool already running. Skipping."
+          } else {
+            Write-Host "Starting App Pool..."
+            Start-WebAppPool -Name $appPool
+
+            $timeout = 30
+            while ((Get-WebAppPoolState $appPool).Value -ne "Started" -and $timeout -gt 0) {
+              Start-Sleep -Seconds 1
+              $timeout--
+            }
+
+            if ($timeout -eq 0) {
+              Write-Error "App Pool did not start in time"
+              exit 1
+            }
           }
-
-          if ($timeout -eq 0) {
-            Write-Error "App Pool did not start in time"
-            exit 1
-          }
-
-          Write-Host "App Pool started successfully"
 
       # ✅ Health Check
       - name: Verify Deployment
