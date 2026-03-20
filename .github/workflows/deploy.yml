@@ -26,7 +26,7 @@ jobs:
       - name: Publish Application
         run: dotnet publish SampleApi/SampleApi.csproj -c Release -o D:\deploy\app
 
-      # 🔥 NEW STEP — Replace Secrets
+      # ✅ Replace Secrets
       - name: Replace AppSettings Secrets
         shell: powershell
         run: |
@@ -37,54 +37,58 @@ jobs:
             exit 1
           }
 
-          Write-Host "Replacing secrets in appsettings.json..."
-
           $content = Get-Content $file -Raw
-
           $content = $content.Replace("__DB_CONNECTION_STRING__", "${{ secrets.DB_CONNECTION_STRING }}")
           $content = $content.Replace("__API_KEY__", "${{ secrets.API_KEY }}")
           $content = $content.Replace("__JWT_SECRET__", "${{ secrets.JWT_SECRET }}")
 
           Set-Content $file $content
 
-          Write-Host "Secrets replaced successfully."
-
-      # ✅ Backup existing app
-      - name: Backup Existing App
+      # 🔥 UPDATED BACKUP STEP (WITH CLEANUP)
+      - name: Backup Existing App (with cleanup)
         shell: powershell
         run: |
           $source = "C:\inetpub\wwwroot\sampleApplication"
-          $date   = Get-Date -Format "yyyyMMdd_HHmmss"
-          $dest   = "D:\backup\sampleApplication_$date"
+          $backupRoot = "D:\backup"
+          $date = Get-Date -Format "yyyyMMdd_HHmmss"
+          $dest = "$backupRoot\sampleApplication_$date"
 
+          # Ensure backup folder exists
+          if (!(Test-Path $backupRoot)) {
+            New-Item -ItemType Directory -Path $backupRoot -Force | Out-Null
+          }
+
+          # Create backup
           if (Test-Path $source) {
-            New-Item -ItemType Directory -Path "D:\backup" -Force | Out-Null
             Copy-Item -Path $source -Destination $dest -Recurse -Force
             Write-Host "Backup created at $dest"
           } else {
             Write-Host "No existing app found, skipping backup."
           }
 
-      # ✅ Stop App Pool (SAFE)
+          # 🔥 Delete backups older than 3 days
+          Write-Host "Cleaning backups older than 3 days..."
+
+          Get-ChildItem -Path $backupRoot -Directory |
+            Where-Object {
+              $_.Name -like "sampleApplication_*" -and
+              $_.LastWriteTime -lt (Get-Date).AddDays(-3)
+            } |
+            ForEach-Object {
+              Write-Host "Deleting old backup: $($_.FullName)"
+              Remove-Item $_.FullName -Recurse -Force
+            }
+
+      # ✅ Stop App Pool
       - name: Stop App Pool
         shell: powershell
         run: |
           Import-Module WebAdministration
-
           $appPool = "sampleApplication"
 
-          if (!(Test-Path "IIS:\AppPools\$appPool")) {
-            Write-Error "App Pool does not exist!"
-            exit 1
-          }
-
           $state = (Get-WebAppPoolState $appPool).Value
-          Write-Host "Current App Pool State: $state"
 
-          if ($state -eq "Stopped") {
-            Write-Host "App Pool already stopped. Skipping."
-          } else {
-            Write-Host "Stopping App Pool..."
+          if ($state -ne "Stopped") {
             Stop-WebAppPool -Name $appPool
 
             $timeout = 30
@@ -92,14 +96,9 @@ jobs:
               Start-Sleep -Seconds 1
               $timeout--
             }
-
-            if ($timeout -eq 0) {
-              Write-Error "App Pool did not stop in time"
-              exit 1
-            }
           }
 
-      # ✅ Ensure target folder exists
+      # ✅ Ensure folder
       - name: Ensure Target Folder Exists
         shell: powershell
         run: |
@@ -108,7 +107,7 @@ jobs:
             New-Item -ItemType Directory -Path $target -Force | Out-Null
           }
 
-      # ✅ Deploy files
+      # ✅ Deploy
       - name: Deploy Files
         shell: powershell
         run: |
@@ -116,42 +115,27 @@ jobs:
                     -Destination "C:\inetpub\wwwroot\sampleApplication" `
                     -Recurse -Force
 
-      # ✅ Small wait (IMPORTANT)
+      # ✅ Wait
       - name: Wait Before Starting App Pool
         shell: powershell
         run: Start-Sleep -Seconds 3
 
-      # ✅ Start App Pool (SAFE)
+      # ✅ Start App Pool
       - name: Start App Pool
         shell: powershell
         run: |
           Import-Module WebAdministration
-
           $appPool = "sampleApplication"
 
-          if (!(Test-Path "IIS:\AppPools\$appPool")) {
-            Write-Error "App Pool does not exist!"
-            exit 1
-          }
-
           $state = (Get-WebAppPoolState $appPool).Value
-          Write-Host "Current App Pool State: $state"
 
-          if ($state -eq "Started") {
-            Write-Host "App Pool already running. Skipping."
-          } else {
-            Write-Host "Starting App Pool..."
+          if ($state -ne "Started") {
             Start-WebAppPool -Name $appPool
 
             $timeout = 30
             while ((Get-WebAppPoolState $appPool).Value -ne "Started" -and $timeout -gt 0) {
               Start-Sleep -Seconds 1
               $timeout--
-            }
-
-            if ($timeout -eq 0) {
-              Write-Error "App Pool did not start in time"
-              exit 1
             }
           }
 
@@ -163,11 +147,10 @@ jobs:
 
           try {
             $response = Invoke-WebRequest -Uri http://localhost -UseBasicParsing -TimeoutSec 10
-
             if ($response.StatusCode -eq 200) {
               Write-Host "✅ App is running successfully"
             } else {
-              Write-Error "❌ Health check failed. Status: $($response.StatusCode)"
+              Write-Error "❌ Health check failed"
               exit 1
             }
           } catch {
