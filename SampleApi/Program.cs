@@ -25,6 +25,7 @@ var app = builder.Build();
 
 // Configure middleware pipeline data data
 
+app.UseStaticFiles(); // Enable static file serving for Swagger UI
 app.UseSwagger();
 app.UseSwaggerUI(options =>
 {
